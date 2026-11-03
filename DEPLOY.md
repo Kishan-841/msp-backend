@@ -1,21 +1,19 @@
 # Deploying the MSP CRM backend (VM + Docker)
 
-One VM runs three containers (`docker-compose.yml`):
+`docker-compose.yml` runs:
 
 | Service | What | Exposed |
 |---|---|---|
 | `db` | PostgreSQL 16, data in the `pgdata` volume | no (private network only) |
-| `api` | this Express API; on every start runs `prisma db push`, then `node dist/index.js` | no |
-| `caddy` | HTTPS reverse proxy with an automatic Let's Encrypt certificate | ports 80 + 443 |
+| `api` | this Express API; on every start runs `prisma db push`, then `node dist/index.js` | `127.0.0.1:${API_PORT}` (default 5007) — localhost only |
+| `caddy` | *optional* (`--profile caddy`) HTTPS proxy, only for a VM with nothing on 80/443 | 80 + 443 |
 
-The frontend is deployed separately on Vercel.
+HTTPS is done by the VM's existing nginx (like the other projects on it). The frontend is on Vercel.
 
-## 1. Prepare the VM (once)
+## 1. Prepare (once)
 
-- Ubuntu 22.04/24.04, 2 GB RAM or more. Install Docker: `curl -fsSL https://get.docker.com | sh`
-- Firewall: allow **22, 80, 443** only.
-- DNS: an **A record** for the API hostname (e.g. `api.yourcompany.com`) → the VM's public IP.
-  Caddy can only get the certificate once this resolves.
+- DNS: an **A record** for the API hostname (e.g. `msp-api.yourcompany.com`) → the VM's public IP.
+- Pick a free local port for `API_PORT` — check with `sudo ss -ltnp | grep 127.0.0.1:5007` (no output = free).
 
 ## 2. First deploy
 
@@ -25,18 +23,21 @@ cp .env.example .env
 nano .env          # fill in everything — see below
 docker compose up -d --build
 docker compose logs -f api     # watch: schema push → "Server running" → "Created the first Admin"
+curl http://127.0.0.1:5007/api/v1/health
 ```
+
+Then nginx + HTTPS — `docker/nginx.conf` has the site config and the 4 commands (link, test, reload, certbot).
 
 `.env` essentials:
 
-- `API_DOMAIN` — the hostname from the DNS step.
+- `API_DOMAIN`, `API_PORT`.
 - `POSTGRES_PASSWORD`, `JWT_SECRET`, `JWT_REFRESH_SECRET` — long random values (`openssl rand -base64 48`), all different.
 - `CORS_ORIGIN` — the exact frontend URL, e.g. `https://msp-crm.vercel.app` (no trailing slash; comma-separate several).
-- `COOKIE_SAMESITE=none` — needed because Vercel and the VM are different sites.
+- `COOKIE_SAMESITE=none` — needed because Vercel and the VM are different sites (requires HTTPS).
 - `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 chars) — creates the first Admin on an empty database.
   **Delete both lines after you log in**, then `docker compose up -d`.
 
-Check: `curl https://api.yourcompany.com/api/v1/health` → `{"success":true,...}`.
+Check: `curl https://<API_DOMAIN>/api/v1/health` → `{"success":true,...}`.
 
 ## 3. Frontend (Vercel)
 

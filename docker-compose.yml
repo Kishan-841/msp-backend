@@ -1,6 +1,7 @@
-# MSP CRM backend on one VM: Postgres + API + Caddy (HTTPS with a free, auto-renewed certificate).
-# 1. cp .env.example .env  and fill it in     2. point API_DOMAIN's DNS at this VM
-# 3. docker compose up -d --build              Details: DEPLOY.md
+# MSP CRM backend on one VM: Postgres + API.
+# The API listens on 127.0.0.1:${API_PORT} only — the VM's existing reverse proxy (nginx) serves it
+# over HTTPS (docker/nginx.conf). No reverse proxy on the VM? Add Caddy: --profile caddy.
+# 1. cp .env.example .env and fill it in   2. docker compose up -d --build   Details: DEPLOY.md
 
 services:
   db:
@@ -30,19 +31,22 @@ services:
       TRUST_PROXY: 1 # behind Caddy
     volumes:
       - uploads:/app/uploads # attached files survive rebuilds
+    ports:
+      - "127.0.0.1:${API_PORT:-5007}:5001" # localhost only — nginx on the VM forwards to it
     depends_on:
       db:
         condition: service_healthy
-    # not published: Caddy forwards to it
 
+  # Optional — only for a VM with nothing on ports 80/443:  docker compose --profile caddy up -d
   caddy:
     image: caddy:2-alpine
+    profiles: ["caddy"]
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     environment:
-      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+      API_DOMAIN: ${API_DOMAIN:-localhost}
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
