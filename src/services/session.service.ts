@@ -4,6 +4,7 @@ import { config } from '../config/index.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { disconnectSessions } from '../lib/socket.js';
+import { recordAuthEvent } from './audit.service.js';
 
 // Server-side sessions: one row per login. Tokens are only valid while their session is.
 //  access token  { userId, sid }        15 min
@@ -90,6 +91,10 @@ export async function rotateSession(refreshToken: string) {
 
   // An old refresh token came back after it was rotated out — someone else has a copy
   await revokeSession(session.id);
+  const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { id: true, name: true, email: true, role: true } });
+  await recordAuthEvent('SESSION_REVOKED', user ?? { id: session.userId }, {
+    reason: 'An old sign-in token was reused — possibly copied. The session was ended.',
+  });
   throw new AppError('Session expired. Please sign in again.', 401);
 }
 

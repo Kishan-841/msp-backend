@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import multer from 'multer';
+import { auditContextMiddleware } from '../lib/auditContext.js';
 import * as attachmentController from '../controllers/attachment.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -31,7 +32,7 @@ const router = Router();
 
 router.use(authenticate);
 
-router.post('/', upload.single('file'), attachmentController.upload);
+router.post('/', upload.single('file'), auditContextMiddleware, attachmentController.upload); // re-enter after multer
 router.get('/', attachmentController.list);
 router.get('/:id/download', attachmentController.download);
 router.delete('/:id', attachmentController.remove);

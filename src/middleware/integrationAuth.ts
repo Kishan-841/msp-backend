@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from './errorHandler.js';
 import { hashKey, type Client } from '../services/integration.service.js';
+import { setAuditActor, withoutAudit } from '../lib/auditContext.js';
 
 // Machine-to-machine auth for /api/v1/integrations: `X-API-Key` header only (never a query
 // param — URLs end up in logs). Rate limits are in-memory, like the login throttle.
@@ -57,8 +58,9 @@ export const authenticateIntegration = async (req: Request, _res: Response, next
 
   // at most once a minute — no write on every request
   if (!client.lastUsedAt || Date.now() - client.lastUsedAt.getTime() > WINDOW_MS) {
-    await prisma.integrationClient.update({ where: { id: client.id }, data: { lastUsedAt: new Date() } });
+    await withoutAudit(() => prisma.integrationClient.update({ where: { id: client.id }, data: { lastUsedAt: new Date() } }));
   }
   req.integrationClient = { id: client.id, name: client.name, systemUserId: client.systemUserId };
+  setAuditActor({ id: client.systemUserId, name: `${client.name} (API)`, role: 'API' });
   next();
 };

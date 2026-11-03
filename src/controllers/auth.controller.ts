@@ -6,6 +6,8 @@ import { AppError } from '../middleware/errorHandler.js';
 import * as authService from '../services/auth.service.js';
 import { revokeSession, sessionIdOf } from '../services/session.service.js';
 import { config } from '../config/index.js';
+import { prisma } from '../lib/prisma.js';
+import { recordAuthEvent } from '../services/audit.service.js';
 
 const loginSchema = z.object({
   email: z.email('Invalid email address'),
@@ -50,7 +52,14 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
   const sid =
     sessionIdOf(req.cookies?.refreshToken, config.jwtRefreshSecret) ??
     sessionIdOf(req.headers.authorization?.split(' ')[1], config.jwtSecret);
-  if (sid) await revokeSession(sid);
+  if (sid) {
+    const session = await prisma.session.findUnique({
+      where: { id: sid },
+      select: { revokedAt: true, user: { select: { id: true, name: true, email: true, role: true } } },
+    });
+    await revokeSession(sid);
+    if (session && !session.revokedAt) await recordAuthEvent('LOGOUT', session.user);
+  }
 
   res.clearCookie('refreshToken', COOKIE_BASE);
 

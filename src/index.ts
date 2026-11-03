@@ -11,6 +11,9 @@ import followUpRoutes from './routes/followup.routes.js';
 import { integrationClientRouter, integrationRouter } from './routes/integration.routes.js';
 import { startReminderJobs } from './services/reminder.service.js';
 import { bootstrapAdmin } from './services/bootstrap.service.js';
+import { startAuditJobs } from './services/audit.service.js';
+import { auditContextMiddleware } from './lib/auditContext.js';
+import auditRoutes from './routes/audit.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import leadRoutes from './routes/lead.routes.js';
@@ -43,6 +46,8 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' })); // company logo is sent as a data URL
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+// who/where for the system log — after the body parsers (their stream callbacks would lose it)
+app.use(auditContextMiddleware);
 
 // Health check
 app.get('/api/v1/health', (_req, res) => {
@@ -85,6 +90,7 @@ app.use('/api/v1/tasks', tasksRoutes);
 app.use('/api/v1/follow-ups', followUpRoutes);
 app.use('/api/v1/integrations', integrationRouter);
 app.use('/api/v1/integration-clients', integrationClientRouter);
+app.use('/api/v1/audit-logs', auditRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);
@@ -93,6 +99,7 @@ const server = app.listen(config.port, () => {
   console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
   initSocket(server);
   startReminderJobs();
+  startAuditJobs();
   bootstrapAdmin().catch((err) => console.error('Admin bootstrap failed', err));
 });
 

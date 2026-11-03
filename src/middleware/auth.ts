@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { verifyAccessToken } from '../services/session.service.js';
 import { AppError } from './errorHandler.js';
 import type { UserRole } from '../generated/prisma/client.js';
+import { setAuditActor } from '../lib/auditContext.js';
 
 export const authenticate = async (
   req: Request,
@@ -35,6 +36,7 @@ export const authenticate = async (
 
     const { password: _, ...userWithoutPassword } = user;
     req.user = userWithoutPassword;
+    setAuditActor({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     next();
   } catch (error) {

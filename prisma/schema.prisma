@@ -575,3 +575,31 @@ model IntegrationRemovedLead {
   @@unique([clientId, externalRef])
   @@index([clientId, removedAt])
 }
+
+// System log (Admin only): sign-ins and every create / update / delete of business records,
+// with before → after values. Actor details are snapshots (no FK) so entries outlive deleted
+// users and records.
+model AuditLog {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  category    String   // AUTH | LEAD | MEETING | QUOTE | PURCHASE_ORDER | ACCOUNTS | USER | VENDOR | MATERIAL | SETTINGS | FILE
+  action      String   // LOGIN | LOGIN_FAILED | LOGIN_BLOCKED | LOGOUT | SESSION_REVOKED | CREATE | UPDATE | DELETE
+  actorId     String?
+  actorName   String?
+  actorEmail  String?
+  actorRole   String?
+  entityType  String?  // Prisma model name
+  entityId    String?
+  entityLabel String?  // e.g. company name, quote number
+  leadId      String?  // the lead the record belongs to (for the lead's history)
+  changes     Json?    // { field: { from, to, fromLabel?, toLabel? } }
+  meta        Json?    // extra: reason, attempted email, count…
+  ip          String?
+  userAgent   String?
+
+  @@index([createdAt])
+  @@index([leadId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([category, createdAt])
+}
