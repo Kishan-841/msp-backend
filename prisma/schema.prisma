@@ -1,0 +1,577 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  MSP_TL
+  SALES
+  ACCOUNTS
+}
+
+enum LeadSource {
+  MANUAL
+  API
+}
+
+enum LeadCategory {
+  HARDWARE
+  SOFTWARE
+}
+
+enum LeadStatus {
+  NEW
+  CATEGORIZED
+  ASSIGNED
+  MEETING_SCHEDULED
+  MEETING_DONE
+  MOM_ADDED
+  QUOTE_REQUESTED
+  QUOTE_CREATED
+  QUOTE_SUBMITTED
+  QUOTE_APPROVED
+  QUOTE_REJECTED
+  QUOTE_SENT
+  CUSTOMER_ACCEPTED
+  PO_PENDING_ACCOUNTS
+  PO_CONFIRMED
+  PO_SENT
+  INVOICED
+  DEAL_REGISTERED // closed: fully invoiced and fully paid
+}
+
+enum QuoteStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  SENT
+  ACCEPTED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING_ACCOUNTS
+  CONFIRMED
+  REJECTED
+  SENT_TO_VENDOR
+}
+
+// INTRA = same state → CGST + SGST; INTER = different states → IGST
+enum GstType {
+  INTRA
+  INTER
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+enum PaymentDirection {
+  IN  // receipt from customer
+  OUT // payment to vendor
+}
+
+enum PaymentMode {
+  NEFT
+  RTGS
+  IMPS
+  UPI
+  CHEQUE
+  CASH
+  OTHER
+}
+
+// Issuer's view: CREDIT reduces what's owed on the invoice, DEBIT increases it
+enum NoteKind {
+  CREDIT
+  DEBIT
+}
+
+enum NoteSide {
+  SALES
+  PURCHASE
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdLeads   Lead[] @relation("CreatedLeads")
+  assignedLeads  Lead[] @relation("AssignedLeads")
+  managedLeads   Lead[] @relation("ManagedLeads")
+
+  conductedMeetings Meeting[]
+
+  createdQuotes  Quote[] @relation("CreatedQuotes")
+  approvedQuotes Quote[] @relation("ApprovedQuotes")
+
+  requestedQuoteLeads Lead[]  @relation("QuoteRequestedLeads")
+  sentQuotes          Quote[] @relation("SentQuotes")
+  acceptedQuotes      Quote[] @relation("AcceptedQuotes")
+  materials           Material[]
+  createdPOs          PurchaseOrder[]   @relation("CreatedPOs")
+  confirmedPOs        PurchaseOrder[]   @relation("ConfirmedPOs")
+  sentPOs             PurchaseOrder[]   @relation("SentPOs")
+  purchaseInvoices    PurchaseInvoice[]
+  attachments         Attachment[]
+  salesInvoices       SalesInvoice[]
+  payments            Payment[]
+  adjustmentNotes     AdjustmentNote[]
+  sessions            Session[]
+  isSystem            Boolean   @default(false) // non-login owner of API-created leads; hidden from user lists
+  integrationClient   IntegrationClient?
+
+  notifications  Notification[]
+  activityLogs   ActivityLog[]
+}
+
+model Lead {
+  id            String       @id @default(uuid())
+  companyName   String
+  contactPerson String
+  phone         String
+  email         String
+  source        LeadSource   @default(MANUAL)
+  category      LeadCategory?
+  subcategory   String[]
+  status        LeadStatus   @default(NEW)
+  notes         String?
+
+  // Customer tax details — needed for CGST+SGST vs IGST on invoices
+  customerGstin  String?
+  customerState  String? // GST state code, e.g. "27" (Maharashtra)
+  billingAddress String?
+
+  createdById   String
+  createdBy     User         @relation("CreatedLeads", fields: [createdById], references: [id])
+
+  assignedToId  String?
+  assignedTo    User?        @relation("AssignedLeads", fields: [assignedToId], references: [id])
+
+  mspTlId       String?
+  mspTl         User?        @relation("ManagedLeads", fields: [mspTlId], references: [id])
+
+  // Filled by Sales when sending the lead to MSP TL for a quote
+  finalRequirement   String?
+  // Products picked by Sales, e.g. [{ category: "HARDWARE", name: "Firewall", details: "50 users" }]
+  // — MSP TL's quote starts with one requirement per item
+  requirementItems   Json?
+  quoteRequestedAt   DateTime?
+  quoteRequestedById String?
+  quoteRequestedBy   User?     @relation("QuoteRequestedLeads", fields: [quoteRequestedById], references: [id])
+
+  callbackAt      DateTime? // set by a "Call later" outcome; cleared once a meeting is scheduled
+  // Leads received from our other software (source = API)
+  integrationClientId  String?
+  integrationClient    IntegrationClient? @relation(fields: [integrationClientId], references: [id])
+  externalRef          String?  // that software's own lead id
+  submittedByName      String?
+  submittedByEmail     String?
+  sourceRequirement    String?  // free-text requirement sent with the lead (optional)
+  possibleDuplicateIds String[] @default([]) // leads with the same phone / email / GSTIN when received
+  orderNo          Int          @default(1) // repeat orders: 2, 3… — the workspace shows the current one
+  orderStartedAt   DateTime?    // when the current (repeat) order began; null for the first
+  droppedAt       DateTime?
+  dropReason      String?
+
+  meetings        Meeting[]
+  quotes          Quote[]
+  purchaseOrders  PurchaseOrder[]
+  salesInvoices   SalesInvoice[]
+  payments        Payment[]
+  activityLogs    ActivityLog[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([integrationClientId, externalRef])
+}
+
+model Meeting {
+  id            String   @id @default(uuid())
+  leadId        String
+  lead          Lead     @relation(fields: [leadId], references: [id])
+  conductedById String
+  conductedBy   User     @relation(fields: [conductedById], references: [id])
+  meetingDate   DateTime
+  location      String
+  attendees     String[]
+  agenda        String?
+  momContent    String?
+  attachments   String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Quote {
+  id           String      @id @default(uuid())
+  leadId       String
+  lead         Lead        @relation(fields: [leadId], references: [id])
+  createdById  String
+  createdBy    User        @relation("CreatedQuotes", fields: [createdById], references: [id])
+  orderNo          Int          @default(1) // which order of the lead this quote belongs to
+  quoteNumber  String      @unique
+  // Requirement[] — see QuoteRequirement in quote.service.ts
+  items        Json
+  subtotal     Float       @default(0) // before GST
+  gstAmount    Float       @default(0)
+  totalAmount  Float                   // subtotal + GST
+  status       QuoteStatus @default(DRAFT)
+  approvedById String?
+  approvedBy   User?       @relation("ApprovedQuotes", fields: [approvedById], references: [id])
+  sentAt       DateTime?
+  sentById     String?
+  sentBy       User?       @relation("SentQuotes", fields: [sentById], references: [id])
+  // Customer accepted the quote — unlocks our PO to the vendor
+  acceptedAt       DateTime?
+  acceptedById     String?
+  acceptedBy       User?     @relation("AcceptedQuotes", fields: [acceptedById], references: [id])
+  customerPoNumber String?
+  customerPoDate   DateTime?
+  acceptanceNote   String?
+  purchaseOrder    PurchaseOrder?
+  salesInvoices    SalesInvoice[]
+  notes        String?
+  // Follow-up with the customer (history is in the lead's activity log)
+  lastFollowUpAt   DateTime?
+  lastFollowUpNote String?
+  nextFollowUpAt   DateTime?  // hidden from Follow-ups until this time
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Vendor {
+  id            String   @id @default(uuid())
+  name          String
+  contactPerson String
+  email         String
+  phone         String
+  address       String?
+  gstNumber     String?
+  state         String?  // GST state code
+  products      String[]
+  // Vendor's bank — pre-fills vendor payments
+  bankName          String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  isActive      Boolean  @default(true)
+  purchaseOrders   PurchaseOrder[]
+  purchaseInvoices PurchaseInvoice[]
+  payments         Payment[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+// Our own company — single row (id = 1). Used on POs and invoices.
+model CompanySettings {
+  id        Int      @id @default(1)
+  name      String
+  gstin     String?
+  state     String? // GST state code
+  address   String?
+  email     String?
+  phone     String?
+  pan       String?
+  cin       String? // Corporate Identity Number
+  tan       String? // for TDS deducted on vendor payments
+  // Bank details printed on invoices so customers know where to pay
+  bankName          String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  bankBranch        String?
+  logoDataUrl String? // small image as a data: URL, so print pages need no extra auth
+  poTerms     String? // terms & conditions printed on every PO (one per line)
+  updatedAt DateTime @updatedAt
+}
+
+// Our PO to the vendor — exactly one per accepted quote
+model PurchaseOrder {
+  id            String              @id @default(uuid())
+  poNumber      String              @unique // PO-YYYYMMDD-NNNN
+  quoteId       String              @unique
+  quote         Quote               @relation(fields: [quoteId], references: [id])
+  leadId        String
+  lead          Lead                @relation(fields: [leadId], references: [id])
+  vendorId      String
+  vendor        Vendor              @relation(fields: [vendorId], references: [id])
+  status        PurchaseOrderStatus @default(DRAFT)
+
+  // PoLine[] — the quote's lines and rates, see utils/poCalc.ts
+  items         Json
+  gstType       GstType
+  subtotal      Float               // buying, before GST
+  cgstAmount    Float               @default(0)
+  sgstAmount    Float               @default(0)
+  igstAmount    Float               @default(0)
+  totalAmount   Float
+
+  deliveryAddress      String?
+  expectedDeliveryDate DateTime?
+  notes                String?
+
+  createdById   String
+  createdBy     User                @relation("CreatedPOs", fields: [createdById], references: [id])
+  submittedAt   DateTime?
+  confirmedById String?
+  confirmedBy   User?               @relation("ConfirmedPOs", fields: [confirmedById], references: [id])
+  confirmedAt   DateTime?
+  rejectionReason String?
+  sentById      String?
+  sentBy        User?               @relation("SentPOs", fields: [sentById], references: [id])
+  sentAt        DateTime?
+
+  purchaseInvoices PurchaseInvoice[]
+
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+}
+
+// Vendor's bill against our PO
+model PurchaseInvoice {
+  id                  String        @id @default(uuid())
+  purchaseOrderId     String
+  purchaseOrder       PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  vendorId            String
+  vendor              Vendor        @relation(fields: [vendorId], references: [id])
+  billNumber          String        @unique // ours: PINV/2026-27/0001 — sequential per financial year
+  vendorInvoiceNumber String?       // the vendor's own invoice no. (for GST input-credit matching)
+  items               Json          // InvoiceLine[] — PO lines billed, at buying rates
+  invoiceDate         DateTime
+  dueDate             DateTime?
+  taxableAmount       Float
+  gstType             GstType
+  cgstAmount          Float         @default(0)
+  sgstAmount          Float         @default(0)
+  igstAmount          Float         @default(0)
+  totalAmount         Float
+  paymentStatus       PaymentStatus @default(UNPAID)
+  notes               String?
+  createdById         String
+  createdBy           User          @relation(fields: [createdById], references: [id])
+  allocations         PaymentAllocation[]
+  adjustmentNotes     AdjustmentNote[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@unique([vendorId, vendorInvoiceNumber])
+}
+
+// Uploaded file, linked to any record by (entityType, entityId)
+model Attachment {
+  id           String   @id @default(uuid())
+  entityType   String   // QUOTE_ACCEPTANCE | PURCHASE_ORDER | PURCHASE_INVOICE
+  entityId     String
+  storedName   String   @unique // random name on disk under backend/uploads
+  originalName String
+  mimeType     String
+  size         Int
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
+
+// GST tax invoice to the customer. Party details are snapshotted at issue time.
+model SalesInvoice {
+  id             String        @id @default(uuid())
+  invoiceNumber  String        @unique // INV/2026-27/0001 — sequential per financial year
+  quoteId        String        // the accepted quote this bills (customer prices)
+  quote          Quote         @relation(fields: [quoteId], references: [id])
+  leadId         String
+  lead           Lead          @relation(fields: [leadId], references: [id])
+  invoiceDate    DateTime
+  dueDate        DateTime?
+  items          Json          // SoLine[] with billed quantities
+  gstType        GstType
+  placeOfSupply  String        // customer GST state code
+  customerName   String
+  customerGstin  String?
+  customerAddress String?
+  subtotal       Float
+  cgstAmount     Float         @default(0)
+  sgstAmount     Float         @default(0)
+  igstAmount     Float         @default(0)
+  totalAmount    Float
+  paymentStatus  PaymentStatus @default(UNPAID)
+  notes          String?
+  createdById    String
+  createdBy      User          @relation(fields: [createdById], references: [id])
+  allocations    PaymentAllocation[]
+  adjustmentNotes AdjustmentNote[]
+  // Follow-up with the customer (history is in the lead's activity log)
+  lastFollowUpAt   DateTime?
+  lastFollowUpNote String?
+  nextFollowUpAt   DateTime?  // hidden from Follow-ups until this time
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+// Money in (customer) or out (vendor). Unallocated balance = advance.
+model Payment {
+  id            String           @id @default(uuid())
+  number        String           @unique // RCPT/2026-27/0001 or PAY/2026-27/0001
+  direction     PaymentDirection
+  leadId        String?          // customer (IN)
+  lead          Lead?            @relation(fields: [leadId], references: [id])
+  vendorId      String?          // vendor (OUT)
+  vendor        Vendor?          @relation(fields: [vendorId], references: [id])
+  paymentDate   DateTime
+  mode          PaymentMode
+  reference     String?          // UTR / cheque no.
+  amount        Float            // cash actually moved
+  tdsPercent    Float            @default(0)
+  tdsAmount     Float            @default(0)
+  // Our account the money went into (IN) / out of (OUT) — snapshot of company bank at the time
+  ourBankName          String?
+  ourBankAccountNumber String?
+  ourBankIfsc          String?
+  // The customer's (IN) / vendor's (OUT) account
+  partyBankName          String?
+  partyBankAccountName   String?
+  partyBankAccountNumber String?
+  partyBankIfsc          String?
+  notes         String?
+  createdById   String
+  createdBy     User             @relation(fields: [createdById], references: [id])
+  allocations   PaymentAllocation[]
+  createdAt     DateTime         @default(now())
+}
+
+// How much of a payment (cash + TDS) settles which invoice
+model PaymentAllocation {
+  id                String           @id @default(uuid())
+  paymentId         String
+  payment           Payment          @relation(fields: [paymentId], references: [id])
+  salesInvoiceId    String?
+  salesInvoice      SalesInvoice?    @relation(fields: [salesInvoiceId], references: [id])
+  purchaseInvoiceId String?
+  purchaseInvoice   PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+  amount            Float
+  createdAt         DateTime         @default(now())
+}
+
+model AdjustmentNote {
+  id                String           @id @default(uuid())
+  kind              NoteKind
+  side              NoteSide
+  number            String           // ours (CN/2026-27/0001) for sales; vendor's number for purchase
+  salesInvoiceId    String?
+  salesInvoice      SalesInvoice?    @relation(fields: [salesInvoiceId], references: [id])
+  purchaseInvoiceId String?
+  purchaseInvoice   PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+  noteDate          DateTime
+  taxableAmount     Float
+  gstType           GstType
+  cgstAmount        Float            @default(0)
+  sgstAmount        Float            @default(0)
+  igstAmount        Float            @default(0)
+  totalAmount       Float
+  reason            String
+  createdById       String
+  createdBy         User             @relation(fields: [createdById], references: [id])
+  createdAt         DateTime         @default(now())
+}
+
+// Material catalogue: category → product (e.g. Firewall, from frontend lib/categories.ts) → item.
+// Items are added by users while picking a requirement and reused from a dropdown afterwards.
+model Material {
+  id          String       @id @default(uuid())
+  category    LeadCategory
+  product     String       // e.g. "Firewall"
+  name        String       // e.g. "Fortinet FortiGate 60F"
+  brand       String?      // e.g. "Fortinet"
+  isActive    Boolean      @default(true)
+  createdById String
+  createdBy   User         @relation(fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([product, name])
+  @@index([product])
+}
+
+// One row per login. Access + refresh tokens carry the session id; logout / password change /
+// deactivation revoke it. The refresh token rotates on every use (refreshJti); presenting an older
+// one after the grace window is treated as theft and revokes the session.
+model Session {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshJti String
+  prevJti    String?   // the one just rotated out — accepted for a few seconds (parallel tabs)
+  rotatedAt  DateTime?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// One per external software (our other CRMs). Only a SHA-256 of the API key is stored.
+model IntegrationClient {
+  id           String    @id @default(uuid())
+  name         String    @unique
+  keyHash      String    @unique
+  keyPrefix    String    // first characters, to recognise a key in the UI
+  isActive     Boolean   @default(true)
+  lastUsedAt   DateTime?
+  systemUserId String    @unique
+  systemUser   User      @relation(fields: [systemUserId], references: [id])
+  leads        Lead[]
+  removed      IntegrationRemovedLead[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// An API lead deleted here — so the other software can learn it's gone when it polls
+model IntegrationRemovedLead {
+  id          String            @id @default(uuid())
+  clientId    String
+  client      IntegrationClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  externalRef String
+  removedAt   DateTime          @default(now())
+
+  @@unique([clientId, externalRef])
+  @@index([clientId, removedAt])
+}

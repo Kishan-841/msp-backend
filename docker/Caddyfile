@@ -1,0 +1,6 @@
+# HTTPS for the API (certificate from Let's Encrypt, renewed automatically).
+# WebSockets (live notifications) pass through as-is.
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy api:5001
+}
