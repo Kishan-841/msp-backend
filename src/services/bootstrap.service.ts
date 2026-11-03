@@ -11,8 +11,8 @@ export async function bootstrapAdmin() {
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
   if (!email || !password) return;
   if ((await prisma.user.count({ where: { isSystem: false } })) > 0) return;
-  if (password.length < 12) {
-    console.error('BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters — no admin created.');
+  if (password.length < 6) {
+    console.error('BOOTSTRAP_ADMIN_PASSWORD must be at least 6 characters — no admin created.');
     return;
   }
   await prisma.user.create({

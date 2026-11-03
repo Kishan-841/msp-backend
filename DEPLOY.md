@@ -34,7 +34,7 @@ Then nginx + HTTPS — `docker/nginx.conf` has the site config and the 4 command
 - `POSTGRES_PASSWORD`, `JWT_SECRET`, `JWT_REFRESH_SECRET` — long random values (`openssl rand -base64 48`), all different.
 - `CORS_ORIGIN` — the exact frontend URL, e.g. `https://msp-crm.vercel.app` (no trailing slash; comma-separate several).
 - `COOKIE_SAMESITE=none` — needed because Vercel and the VM are different sites (requires HTTPS).
-- `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 chars) — creates the first Admin on an empty database.
+- `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` (≥ 6 chars) — creates the first Admin on an empty database.
   **Delete both lines after you log in**, then `docker compose up -d`.
 
 Check: `curl https://<API_DOMAIN>/api/v1/health` → `{"success":true,...}`.
