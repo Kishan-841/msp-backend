@@ -57,7 +57,7 @@ export async function getAllMeetings(
     prisma.meeting.findMany({
       where,
       include: {
-        lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true } },
+        lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true, assignedToId: true } },
         conductedBy: { select: userSelect },
       },
       // what's next first for the open tabs; newest first for "all" / overdue
@@ -85,7 +85,7 @@ export async function getMeetingById(id: string) {
   const meeting = await prisma.meeting.findUnique({
     where: { id },
     include: {
-      lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true } },
+      lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true, assignedToId: true } },
       conductedBy: { select: userSelect },
     },
   });
@@ -125,7 +125,7 @@ export async function createMeeting(
       conductedById: userId,
     },
     include: {
-      lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true } },
+      lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true, assignedToId: true } },
       conductedBy: { select: userSelect },
     },
   });
@@ -184,7 +184,7 @@ export async function updateMeeting(
     where: { id },
     data: updateData,
     include: {
-      lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true } },
+      lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true, assignedToId: true } },
       conductedBy: { select: userSelect },
     },
   });
@@ -207,7 +207,7 @@ export async function addMOM(id: string, momContent: string, userId: string) {
     where: { id },
     data: { momContent },
     include: {
-      lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true } },
+      lead: { select: { id: true, companyName: true, status: true, quoteRequestedAt: true, assignedToId: true } },
       conductedBy: { select: userSelect },
     },
   });

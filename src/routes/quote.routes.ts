@@ -19,11 +19,11 @@ router.patch('/:id/submit', authorize('ADMIN', 'MSP_TL'), quoteController.submit
 router.patch('/:id/approve', authorize('ADMIN'), quoteController.approve);
 router.patch('/:id/reject', authorize('ADMIN'), quoteController.reject);
 // Talking to the customer is Sales' job (the assigned Sales person — checked in the controller)
-router.patch('/:id/mark-sent', authorize('SALES'), quoteController.markSent);
-router.patch('/:id/mark-accepted', authorize('SALES'), quoteController.markAccepted);
+router.patch('/:id/mark-sent', authorize('SALES', 'MSP_TL'), quoteController.markSent); // assigned person only
+router.patch('/:id/mark-accepted', authorize('SALES', 'MSP_TL'), quoteController.markAccepted);
 router.post(
   '/:id/share-email',
-  authorize('SALES'),
+  authorize('SALES', 'MSP_TL'),
   quoteController.shareEmail
 );
 

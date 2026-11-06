@@ -9,7 +9,8 @@ import type { LeadStatus, UserRole } from '../generated/prisma/client.js';
 //         ACCOUNTS      → deals from "customer accepted" onwards (they invoice them), and
 //                         repeat customers (orderNo > 1) so earlier orders' invoices stay visible
 //  sales: the Sales actions on a lead (calls, meetings, MOM, send for quote, mark sent /
-//         accepted, send PO) → ADMIN, or the SALES user the lead is assigned to
+//         accepted, send PO) → ADMIN, or the person the lead is assigned to (a Sales user, or
+//         an MSP TL who took the lead)
 //
 // A lead the user can't see answers 404 (not 403) so its existence isn't leaked.
 
@@ -42,7 +43,8 @@ function canView(actor: Actor, lead: { assignedToId: string | null; status: Lead
 }
 
 export function canWorkAsSales(actor: Actor, lead: { assignedToId: string | null }) {
-  return actor.role === 'ADMIN' || (actor.role === 'SALES' && lead.assignedToId === actor.id);
+  if (actor.role === 'ADMIN') return true;
+  return (actor.role === 'SALES' || actor.role === 'MSP_TL') && !!lead.assignedToId && lead.assignedToId === actor.id;
 }
 
 /**
@@ -56,7 +58,7 @@ export async function assertLeadAccess(actor: Actor, leadId: string, mode: 'view
   });
   if (!lead || !canView(actor, lead)) throw new AppError('Lead not found.', 404);
   if (mode === 'sales' && !canWorkAsSales(actor, lead)) {
-    throw new AppError('Only the Sales person assigned to this lead can do this.', 403);
+    throw new AppError('Only the person this lead is assigned to can do this.', 403);
   }
   return lead;
 }

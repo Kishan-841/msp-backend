@@ -41,7 +41,13 @@ const fromLead = (l: LeadBits): Pick<FollowUpRow, 'company' | 'contactPerson' | 
   owner: l.assignedTo?.name ?? null,
 });
 
-const open = (actor: Actor) => ({ ...leadVisibility(actor), droppedAt: null });
+/** Open leads the actor sees. `mine`: Sales work — an MSP TL only gets leads assigned to them
+ *  (they see every lead, but only work the ones they took). */
+const open = (actor: Actor, mine = false) => ({
+  ...leadVisibility(actor),
+  droppedAt: null,
+  ...(mine && actor.role === 'MSP_TL' ? { assignedToId: actor.id } : {}),
+});
 
 interface Group {
   key: string;
@@ -60,7 +66,7 @@ function leadGroup(
   since: 'createdAt' | 'updatedAt' | 'callbackAt' | 'quoteRequestedAt',
   link: (id: string) => string = (id) => `/leads/${id}/workspace`
 ): Group {
-  const w = (a: Actor) => ({ AND: [open(a), where(new Date())] });
+  const w = (a: Actor) => ({ AND: [open(a, g.roles === SALES), where(new Date())] });
   return {
     ...g,
     count: (a) => prisma.lead.count({ where: w(a) }),
@@ -90,7 +96,7 @@ function quoteGroup(
   since: 'createdAt' | 'updatedAt' | 'sentAt' | 'acceptedAt',
   opts: { canLog?: boolean; link?: (q: { id: string }) => string } = {}
 ): Group {
-  const w = (a: Actor) => ({ AND: [{ lead: open(a) }, where(new Date())] });
+  const w = (a: Actor) => ({ AND: [{ lead: open(a, g.roles === SALES) }, where(new Date())] });
   return {
     ...g,
     count: (a) => prisma.quote.count({ where: w(a) }),
@@ -124,7 +130,7 @@ function poGroup(
   where: Prisma.PurchaseOrderWhereInput,
   since: 'updatedAt' | 'confirmedAt' | 'sentAt'
 ): Group {
-  const w = (a: Actor) => ({ AND: [{ lead: open(a) }, where] });
+  const w = (a: Actor) => ({ AND: [{ lead: open(a, g.roles === SALES) }, where] });
   return {
     ...g,
     count: (a) => prisma.purchaseOrder.count({ where: w(a) }),
@@ -156,7 +162,8 @@ function poGroup(
 
 const notSnoozed = (now: Date) => ({ OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: now } }] });
 const TL_ADMIN: UserRole[] = ['MSP_TL', 'ADMIN'];
-const SALES: UserRole[] = ['SALES', 'ADMIN'];
+// Sales work — also an MSP TL's own assigned leads (see `open`)
+const SALES: UserRole[] = ['SALES', 'MSP_TL', 'ADMIN'];
 const ACCOUNTS: UserRole[] = ['ACCOUNTS', 'ADMIN'];
 
 const GROUPS: Group[] = [
@@ -181,10 +188,10 @@ const GROUPS: Group[] = [
     label: 'Meeting held, no MOM',
     hint: 'Add the meeting notes.',
     roles: SALES,
-    count: (a) => prisma.meeting.count({ where: { momContent: null, meetingDate: { lt: new Date() }, lead: open(a) } }),
+    count: (a) => prisma.meeting.count({ where: { momContent: null, meetingDate: { lt: new Date() }, lead: open(a, true) } }),
     rows: async (a, skip, take) => {
       const rows = await prisma.meeting.findMany({
-        where: { momContent: null, meetingDate: { lt: new Date() }, lead: open(a) },
+        where: { momContent: null, meetingDate: { lt: new Date() }, lead: open(a, true) },
         select: { id: true, meetingDate: true, location: true, lead: { select: leadBits } },
         orderBy: { meetingDate: 'asc' },
         skip,
@@ -364,9 +371,9 @@ export async function groupPage(actor: Actor, key: string, page: PageParams) {
 export async function dueCount(actor: Actor) {
   const threeDaysAgo = new Date(startOfTodayIST().getTime() - 3 * 86_400_000 + 86_400_000);
   const [quotes, invoices] = await Promise.all([
-    actor.role === 'SALES' || actor.role === 'ADMIN'
+    actor.role === 'SALES' || actor.role === 'MSP_TL' || actor.role === 'ADMIN'
       ? prisma.quote.count({
-          where: { AND: [{ lead: open(actor) }, { status: 'SENT', sentAt: { lt: threeDaysAgo } }, notSnoozed(new Date())] },
+          where: { AND: [{ lead: open(actor, true) }, { status: 'SENT', sentAt: { lt: threeDaysAgo } }, notSnoozed(new Date())] },
         })
       : 0,
     actor.role === 'ACCOUNTS' || actor.role === 'ADMIN' ? prisma.salesInvoice.count({ where: invoiceWhere(actor) }) : 0,

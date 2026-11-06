@@ -15,7 +15,7 @@ router.get('/', leadController.getAll);
 router.get('/:id', leadController.getById);
 router.post(
   '/:id/request-quote',
-  authorize('SALES'),
+  authorize('SALES', 'MSP_TL'), // + the lead must be assigned to them (checked in the controller)
   leadController.requestQuote
 );
 router.post('/', authorize('ADMIN', 'MSP_TL', 'SALES'), leadController.create);
@@ -31,7 +31,7 @@ router.patch('/:id/status', authorize('ADMIN'), leadController.updateStatus);
 router.post('/:id/new-order', authorize('MSP_TL', 'SALES'), leadController.startNewOrder);
 router.post(
   '/:id/call-log',
-  authorize('SALES'),
+  authorize('SALES', 'MSP_TL'), // + the lead must be assigned to them
   leadController.logCall
 );
 

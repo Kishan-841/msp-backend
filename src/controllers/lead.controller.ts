@@ -170,7 +170,7 @@ export const categorize = asyncHandler(async (req: Request, res: Response) => {
 export const assign = asyncHandler(async (req: Request, res: Response) => {
   const id = String(req.params.id);
   const data = assignSchema.parse(req.body);
-  const lead = await leadService.assignLead(id, data.assignedToId, req.user!.id);
+  const lead = await leadService.assignLead(id, data.assignedToId, req.user!);
   sendSuccess(res, lead, 'Lead assigned');
 });
 

@@ -373,11 +373,36 @@ export async function categorizeLead(
   return lead;
 }
 
+/**
+ * Who a lead can be given to: an active Sales user or an MSP TL. An MSP TL may take a lead
+ * themselves only if they created it; Admin may give it to anyone in those two roles.
+ */
+export async function assertAssignable(
+  assignedToId: string,
+  actor: { id: string; role: UserRole },
+  lead: { createdById: string }
+) {
+  const assignee = await prisma.user.findUnique({
+    where: { id: assignedToId },
+    select: { id: true, name: true, role: true, isActive: true, isSystem: true },
+  });
+  if (!assignee || assignee.isSystem) throw new AppError('Assigned user not found.', 404);
+  if (!assignee.isActive) throw new AppError('Cannot assign to an inactive user.', 400);
+  if (assignee.role !== 'SALES' && assignee.role !== 'MSP_TL') {
+    throw new AppError('Leads can only be assigned to Sales users or MSP TLs.', 400);
+  }
+  if (actor.role === 'MSP_TL' && assignee.id === actor.id && lead.createdById !== actor.id) {
+    throw new AppError('You can assign a lead to yourself only if you created it.', 403);
+  }
+  return assignee;
+}
+
 export async function assignLead(
   id: string,
   assignedToId: string,
-  mspTlId: string
+  actor: { id: string; role: UserRole }
 ) {
+  const mspTlId = actor.id;
   const existing = await prisma.lead.findUnique({ where: { id } });
   if (!existing) {
     throw new AppError('Lead not found.', 404);
@@ -390,25 +415,10 @@ export async function assignLead(
     throw new AppError('This lead has been dropped — no further actions allowed.', 400);
   }
   if (existing.assignedToId === assignedToId) {
-    throw new AppError('The lead is already assigned to this Sales person.', 400);
+    throw new AppError('The lead is already assigned to this person.', 400);
   }
 
-  const assignee = await prisma.user.findUnique({
-    where: { id: assignedToId },
-    select: { id: true, name: true, role: true, isActive: true },
-  });
-
-  if (!assignee) {
-    throw new AppError('Assigned user not found.', 404);
-  }
-
-  if (!assignee.isActive) {
-    throw new AppError('Cannot assign to an inactive user.', 400);
-  }
-
-  if (assignee.role !== 'SALES') {
-    throw new AppError('Leads can only be assigned to Sales users.', 400);
-  }
+  const assignee = await assertAssignable(assignedToId, actor, existing);
 
   const lead = await prisma.lead.update({
     where: { id },
@@ -871,11 +881,7 @@ export async function startNewOrder(
   let assignedToId = lead.assignedToId;
   if (input.assignedToId && input.assignedToId !== lead.assignedToId) {
     if (actor.role === 'SALES') throw new AppError('Only Admin or MSP TL can change the Sales person.', 403);
-    const assignee = await prisma.user.findUnique({ where: { id: input.assignedToId } });
-    if (!assignee || !assignee.isActive || assignee.role !== 'SALES') {
-      throw new AppError('Pick an active Sales user for the new order.', 400);
-    }
-    assignedToId = assignee.id;
+    assignedToId = (await assertAssignable(input.assignedToId, actor, lead)).id;
   }
   if (!assignedToId) throw new AppError('Pick the Sales person for the new order.', 400);
 

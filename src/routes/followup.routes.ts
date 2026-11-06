@@ -30,7 +30,7 @@ router.get(
 );
 router.post(
   '/quote/:id',
-  authorize('SALES'),
+  authorize('SALES', 'MSP_TL'), // the lead must be assigned to them
   asyncHandler(async (req: Request, res: Response) => {
     sendSuccess(res, await followUps.logQuoteFollowUp(req.user!, String(req.params.id), logSchema.parse(req.body)), 'Follow-up logged');
   })

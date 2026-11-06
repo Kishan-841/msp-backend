@@ -13,8 +13,9 @@ router.get('/lead/:leadId', meetingController.getByLead);
 
 router.get('/', meetingController.getAll);
 router.get('/:id', meetingController.getById);
-router.post('/', authorize('SALES'), meetingController.create);
-router.put('/:id', authorize('SALES'), meetingController.update);
-router.patch('/:id/mom', authorize('SALES'), meetingController.addMOM);
+// Sales work: the lead must be assigned to the user (checked in the controller)
+router.post('/', authorize('SALES', 'MSP_TL'), meetingController.create);
+router.put('/:id', authorize('SALES', 'MSP_TL'), meetingController.update);
+router.patch('/:id/mom', authorize('SALES', 'MSP_TL'), meetingController.addMOM);
 
 export default router;

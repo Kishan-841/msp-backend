@@ -20,7 +20,7 @@ router.patch('/:id/submit', authorize('MSP_TL'), poController.submit);
 router.patch('/:id/confirm', authorize('ACCOUNTS'), poController.confirm);
 router.patch('/:id/reject', authorize('ACCOUNTS'), poController.reject);
 
-router.patch('/:id/mark-sent', authorize('SALES'), poController.markSent);
-router.post('/:id/share-email', authorize('SALES'), poController.email);
+router.patch('/:id/mark-sent', authorize('SALES', 'MSP_TL'), poController.markSent); // assigned person only
+router.post('/:id/share-email', authorize('SALES', 'MSP_TL'), poController.email);
 
 export default router;

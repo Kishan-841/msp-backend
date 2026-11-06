@@ -40,7 +40,7 @@ export async function getAllQuotes(userId: string, userRole: UserRole, filters: 
     prisma.quote.findMany({
       where,
       include: {
-        lead: { select: { id: true, companyName: true } },
+        lead: { select: { id: true, companyName: true, assignedToId: true } },
         createdBy: { select: userSelect },
         approvedBy: { select: userSelect },
       },
@@ -142,7 +142,7 @@ async function createQuoteLocked(
           notes: data.notes,
         },
         include: {
-          lead: { select: { id: true, companyName: true } },
+          lead: { select: { id: true, companyName: true, assignedToId: true } },
           createdBy: { select: userSelect },
           approvedBy: { select: userSelect },
         },
@@ -199,7 +199,7 @@ export async function updateQuote(
     where: { id },
     data: updateData,
     include: {
-      lead: { select: { id: true, companyName: true } },
+      lead: { select: { id: true, companyName: true, assignedToId: true } },
       createdBy: { select: userSelect },
       approvedBy: { select: userSelect },
     },
@@ -221,7 +221,7 @@ export async function submitQuote(id: string, userId: string) {
     where: { id },
     data: { status: 'SUBMITTED' },
     include: {
-      lead: { select: { id: true, companyName: true } },
+      lead: { select: { id: true, companyName: true, assignedToId: true } },
       createdBy: { select: userSelect },
       approvedBy: { select: userSelect },
     },
@@ -275,7 +275,7 @@ export async function approveQuote(id: string, approvedById: string) {
     where: { id },
     data: { status: 'APPROVED', approvedById },
     include: {
-      lead: { select: { id: true, companyName: true } },
+      lead: { select: { id: true, companyName: true, assignedToId: true } },
       createdBy: { select: userSelect },
       approvedBy: { select: userSelect },
     },
@@ -341,7 +341,7 @@ export async function rejectQuote(id: string, approvedById: string, reason?: str
     where: { id },
     data: updateData,
     include: {
-      lead: { select: { id: true, companyName: true } },
+      lead: { select: { id: true, companyName: true, assignedToId: true } },
       createdBy: { select: userSelect },
       approvedBy: { select: userSelect },
     },
@@ -391,7 +391,7 @@ export async function markQuoteSent(id: string, userId: string, note?: string) {
     where: { id },
     data: { status: 'SENT', sentAt: new Date(), sentById: userId },
     include: {
-      lead: { select: { id: true, companyName: true } },
+      lead: { select: { id: true, companyName: true, assignedToId: true } },
       createdBy: { select: userSelect },
       approvedBy: { select: userSelect },
       sentBy: { select: userSelect },
@@ -443,7 +443,7 @@ export async function markQuoteAccepted(
       acceptanceNote: data.note || null,
     },
     include: {
-      lead: { select: { id: true, companyName: true } },
+      lead: { select: { id: true, companyName: true, assignedToId: true } },
       createdBy: { select: userSelect },
       approvedBy: { select: userSelect },
       sentBy: { select: userSelect },

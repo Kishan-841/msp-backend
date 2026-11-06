@@ -48,7 +48,23 @@ const ROLE_TASKS: Record<UserRole, TaskKey[]> = {
     'invoicesUnpaid',
     'followUpsDue',
   ],
-  MSP_TL: ['toCategorize', 'toAssign', 'quoteRequests', 'quoteDrafts', 'readyForPo', 'posToFix'],
+  MSP_TL: [
+    'toCategorize',
+    'toAssign',
+    'quoteRequests',
+    'quoteDrafts',
+    'readyForPo',
+    'posToFix',
+    // Sales work on leads the MSP TL took themselves (counts below are limited to those)
+    'callbacksDue',
+    'toCall',
+    'momPending',
+    'finalRequirement',
+    'quotesToSend',
+    'awaitingAcceptance',
+    'posToSend',
+    'followUpsDue',
+  ],
   SALES: [
     'callbacksDue',
     'toCall',
@@ -64,6 +80,8 @@ const ROLE_TASKS: Record<UserRole, TaskKey[]> = {
 
 export async function getTaskCounts(actor: Actor) {
   const lead = { ...leadVisibility(actor), droppedAt: null };
+  // Sales steps: an MSP TL sees every lead but only works the ones assigned to them
+  const mine = actor.role === 'MSP_TL' ? { ...lead, assignedToId: actor.id } : lead;
   const now = new Date();
   const want = new Set(ROLE_TASKS[actor.role]);
   const counts: Partial<Record<TaskKey, number>> = {};
@@ -75,27 +93,27 @@ export async function getTaskCounts(actor: Actor) {
   await Promise.all([
     count('toCategorize', () => prisma.lead.count({ where: { ...lead, category: null } })),
     count('toAssign', () => prisma.lead.count({ where: { ...lead, status: 'CATEGORIZED', assignedToId: null } })),
-    count('toCall', () => prisma.lead.count({ where: { ...lead, status: 'ASSIGNED', callbackAt: null } })),
+    count('toCall', () => prisma.lead.count({ where: { ...mine, status: 'ASSIGNED', callbackAt: null } })),
     count('callbacksDue', () =>
-      prisma.lead.count({ where: { ...lead, status: 'ASSIGNED', callbackAt: { lte: now } } })
+      prisma.lead.count({ where: { ...mine, status: 'ASSIGNED', callbackAt: { lte: now } } })
     ),
     count('momPending', () =>
-      prisma.meeting.count({ where: { momContent: null, meetingDate: { lte: now }, lead } })
+      prisma.meeting.count({ where: { momContent: null, meetingDate: { lte: now }, lead: mine } })
     ),
-    count('finalRequirement', () => prisma.lead.count({ where: { ...lead, status: 'MOM_ADDED' } })),
+    count('finalRequirement', () => prisma.lead.count({ where: { ...mine, status: 'MOM_ADDED' } })),
     count('quoteRequests', () =>
       prisma.lead.count({ where: { ...lead, status: { in: ['QUOTE_REQUESTED', 'QUOTE_REJECTED'] } } })
     ),
     count('quoteDrafts', () => prisma.quote.count({ where: { status: 'DRAFT', lead } })),
     count('quotesToApprove', () => prisma.quote.count({ where: { status: 'SUBMITTED', lead } })),
-    count('quotesToSend', () => prisma.quote.count({ where: { status: 'APPROVED', lead } })),
-    count('awaitingAcceptance', () => prisma.quote.count({ where: { status: 'SENT', lead } })),
+    count('quotesToSend', () => prisma.quote.count({ where: { status: 'APPROVED', lead: mine } })),
+    count('awaitingAcceptance', () => prisma.quote.count({ where: { status: 'SENT', lead: mine } })),
     count('readyForPo', () => prisma.quote.count({ where: { status: 'ACCEPTED', purchaseOrder: null, lead } })),
     count('posToFix', () =>
       prisma.purchaseOrder.count({ where: { status: { in: ['DRAFT', 'REJECTED'] }, lead } })
     ),
     count('posToConfirm', () => prisma.purchaseOrder.count({ where: { status: 'PENDING_ACCOUNTS', lead } })),
-    count('posToSend', () => prisma.purchaseOrder.count({ where: { status: 'CONFIRMED', lead } })),
+    count('posToSend', () => prisma.purchaseOrder.count({ where: { status: 'CONFIRMED', lead: mine } })),
     count('posToBill', async () => (await listReadyToBill()).length),
     count('billsToPay', async () => {
       const bills = await prisma.purchaseInvoice.findMany({
